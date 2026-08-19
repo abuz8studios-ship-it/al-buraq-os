@@ -1,0 +1,701 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>QADIR OS — ABUZ8 Mission Control</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=IBM+Plex+Mono:wght@300;400;500&family=Rajdhani:wght@300;400;500;600&display=swap');
+
+  :root {
+    --lapis:    #0a1628;
+    --lapis2:   #0f1f3d;
+    --lapis3:   #162847;
+    --gold:     #c9a84c;
+    --gold2:    #e8c96a;
+    --gold-dim: #7a6530;
+    --teal:     #1a8a7a;
+    --teal2:    #22b5a0;
+    --cream:    #f5f0e8;
+    --soft:     #fafaf7;
+    --muted:    #8a9ab5;
+    --danger:   #c94c4c;
+    --glow: 0 0 20px rgba(201,168,76,0.3);
+    --teal-glow: 0 0 15px rgba(26,138,122,0.4);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--lapis);
+    color: var(--cream);
+    font-family: 'Rajdhani', sans-serif;
+    height: 100vh;
+    display: grid;
+    grid-template-rows: 56px 1fr 40px;
+    grid-template-columns: 220px 1fr 280px;
+    grid-template-areas:
+      "header header header"
+      "nav    main   sidebar"
+      "footer footer footer";
+    overflow: hidden;
+  }
+
+  /* ── HEADER ── */
+  header {
+    grid-area: header;
+    background: linear-gradient(90deg, var(--lapis2) 0%, var(--lapis3) 50%, var(--lapis2) 100%);
+    border-bottom: 1px solid var(--gold-dim);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 20px;
+    position: relative;
+  }
+  header::after {
+    content: '';
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--gold), transparent);
+  }
+  .logo {
+    font-family: 'Cinzel', serif;
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--gold);
+    letter-spacing: 3px;
+    text-transform: uppercase;
+  }
+  .logo span { color: var(--teal2); }
+  .header-status {
+    display: flex; gap: 16px; align-items: center;
+  }
+  .status-pill {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    padding: 3px 10px;
+    border-radius: 2px;
+    border: 1px solid;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+  .status-pill.green  { color: var(--teal2);  border-color: var(--teal);  background: rgba(26,138,122,0.1); }
+  .status-pill.gold   { color: var(--gold);   border-color: var(--gold-dim); background: rgba(201,168,76,0.1); }
+  .status-pill.red    { color: var(--danger); border-color: var(--danger); background: rgba(201,76,76,0.1); }
+  .time-display {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  /* ── NAV ── */
+  nav {
+    grid-area: nav;
+    background: var(--lapis2);
+    border-right: 1px solid rgba(201,168,76,0.15);
+    padding: 16px 0;
+    overflow-y: auto;
+  }
+  .nav-section-label {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 2px;
+    color: var(--gold-dim);
+    text-transform: uppercase;
+    padding: 8px 16px 4px;
+  }
+  .nav-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 16px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--muted);
+    letter-spacing: 0.5px;
+    transition: all 0.15s;
+    border-left: 2px solid transparent;
+  }
+  .nav-item:hover { color: var(--cream); background: rgba(201,168,76,0.05); }
+  .nav-item.active { color: var(--gold); border-left-color: var(--gold); background: rgba(201,168,76,0.08); }
+  .nav-item.teal.active { color: var(--teal2); border-left-color: var(--teal2); background: rgba(26,138,122,0.08); }
+  .nav-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+
+  /* ── MAIN ── */
+  main {
+    grid-area: main;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: var(--lapis);
+  }
+
+  /* Chat area */
+  #chat-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  #chat-messages::-webkit-scrollbar { width: 4px; }
+  #chat-messages::-webkit-scrollbar-track { background: transparent; }
+  #chat-messages::-webkit-scrollbar-thumb { background: var(--gold-dim); border-radius: 2px; }
+
+  .msg {
+    max-width: 85%;
+    padding: 10px 14px;
+    border-radius: 2px;
+    font-size: 14px;
+    line-height: 1.6;
+    font-family: 'Rajdhani', sans-serif;
+    animation: msgIn 0.2s ease;
+  }
+  @keyframes msgIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+  .msg.user {
+    align-self: flex-end;
+    background: var(--lapis3);
+    border: 1px solid rgba(201,168,76,0.2);
+    color: var(--cream);
+  }
+  .msg.assistant {
+    align-self: flex-start;
+    background: rgba(26,138,122,0.08);
+    border: 1px solid rgba(26,138,122,0.2);
+    color: var(--soft);
+  }
+  .msg.system {
+    align-self: center;
+    background: transparent;
+    border: 1px solid rgba(201,168,76,0.15);
+    color: var(--gold-dim);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.5px;
+    text-align: center;
+    max-width: 100%;
+  }
+  .msg-label {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+    opacity: 0.6;
+  }
+
+  /* Input bar */
+  .input-bar {
+    border-top: 1px solid rgba(201,168,76,0.15);
+    background: var(--lapis2);
+    padding: 12px 16px;
+    display: flex;
+    gap: 10px;
+    align-items: flex-end;
+  }
+  #user-input {
+    flex: 1;
+    background: var(--lapis);
+    border: 1px solid rgba(201,168,76,0.2);
+    color: var(--cream);
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 14px;
+    padding: 9px 12px;
+    border-radius: 2px;
+    resize: none;
+    outline: none;
+    line-height: 1.5;
+    min-height: 40px;
+    max-height: 120px;
+    transition: border-color 0.2s;
+  }
+  #user-input::placeholder { color: var(--muted); }
+  #user-input:focus { border-color: var(--gold-dim); }
+
+  .send-btn {
+    background: linear-gradient(135deg, var(--gold-dim), var(--gold));
+    color: var(--lapis);
+    border: none;
+    padding: 9px 18px;
+    font-family: 'Rajdhani', sans-serif;
+    font-weight: 600;
+    font-size: 13px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    cursor: pointer;
+    border-radius: 2px;
+    transition: all 0.15s;
+    height: 40px;
+  }
+  .send-btn:hover { background: linear-gradient(135deg, var(--gold), var(--gold2)); box-shadow: var(--glow); }
+  .send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* ── SIDEBAR ── */
+  #sidebar {
+    grid-area: sidebar;
+    background: var(--lapis2);
+    border-left: 1px solid rgba(201,168,76,0.15);
+    overflow-y: auto;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .widget {
+    background: var(--lapis);
+    border: 1px solid rgba(201,168,76,0.12);
+    border-radius: 2px;
+    padding: 12px;
+  }
+  .widget-title {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--gold-dim);
+    margin-bottom: 10px;
+  }
+
+  /* Port status */
+  .port-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 5px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+    font-size: 12px;
+    font-family: 'IBM Plex Mono', monospace;
+  }
+  .port-row:last-child { border-bottom: none; }
+  .port-name { color: var(--muted); font-size: 11px; }
+  .port-num  { color: var(--cream); }
+  .dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+  .dot.green  { background: var(--teal2); box-shadow: 0 0 6px var(--teal2); }
+  .dot.red    { background: var(--danger); }
+  .dot.pinging { animation: pulse 1s infinite; background: var(--gold); }
+  @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.3; } }
+
+  /* Memory widget */
+  .memory-item {
+    font-size: 11px;
+    font-family: 'IBM Plex Mono', monospace;
+    color: var(--teal2);
+    padding: 3px 0;
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .memory-item:hover { color: var(--gold); }
+
+  /* Quick actions */
+  .qa-btn {
+    width: 100%;
+    background: transparent;
+    border: 1px solid rgba(201,168,76,0.2);
+    color: var(--muted);
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 0.5px;
+    padding: 7px 10px;
+    text-align: left;
+    cursor: pointer;
+    border-radius: 2px;
+    margin-bottom: 5px;
+    transition: all 0.15s;
+  }
+  .qa-btn:hover { border-color: var(--gold); color: var(--gold); background: rgba(201,168,76,0.05); }
+
+  /* ── FOOTER ── */
+  footer {
+    grid-area: footer;
+    background: var(--lapis2);
+    border-top: 1px solid rgba(201,168,76,0.12);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 16px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    color: var(--muted);
+  }
+  .footer-right { display: flex; gap: 20px; }
+
+  /* Typing indicator */
+  .typing { display: flex; gap: 4px; align-items: center; padding: 8px 0; }
+  .typing span {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--teal2);
+    animation: bounce 1.2s infinite;
+  }
+  .typing span:nth-child(2) { animation-delay: 0.2s; }
+  .typing span:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes bounce { 0%,80%,100% { transform:scale(0.6); opacity:0.4; } 40% { transform:scale(1); opacity:1; } }
+
+  /* Offline banner */
+  #offline-banner {
+    display: none;
+    background: rgba(201,76,76,0.1);
+    border: 1px solid var(--danger);
+    color: var(--danger);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    text-align: center;
+    padding: 6px;
+    letter-spacing: 1px;
+  }
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<header>
+  <div class="logo">ABUZ<span>8</span> · QADIR OS</div>
+  <div class="header-status">
+    <div class="status-pill green" id="core-badge">CORE ONLINE</div>
+    <div class="status-pill gold"  id="mem-badge">MEMORY SYNC</div>
+    <div class="status-pill green" id="obs-badge">OBSIDIAN</div>
+    <div class="time-display" id="clock">--:--:--</div>
+  </div>
+</header>
+
+<!-- NAV -->
+<nav>
+  <div class="nav-section-label">Mission</div>
+  <div class="nav-item active" onclick="setView('chat')">
+    <div class="nav-dot"></div> Command Chat
+  </div>
+  <div class="nav-item" onclick="setView('memory')">
+    <div class="nav-dot"></div> Obsidian Memory
+  </div>
+  <div class="nav-item" onclick="setView('skills')">
+    <div class="nav-dot"></div> OpenClaw Skills
+  </div>
+
+  <div class="nav-section-label" style="margin-top:12px">Systems</div>
+  <div class="nav-item teal" onclick="pingAll()">
+    <div class="nav-dot"></div> Ping All Ports
+  </div>
+  <div class="nav-item" onclick="runTests()">
+    <div class="nav-dot"></div> Protocol Million
+  </div>
+  <div class="nav-item" onclick="openObsidian()">
+    <div class="nav-dot"></div> Open Vault
+  </div>
+
+  <div class="nav-section-label" style="margin-top:12px">Agents</div>
+  <div class="nav-item" onclick="quickSend('Status report: list all live ports and their health')">
+    <div class="nav-dot"></div> System Status
+  </div>
+  <div class="nav-item" onclick="quickSend('Show me the top 3 revenue tasks I should do right now')">
+    <div class="nav-dot"></div> Revenue Tasks
+  </div>
+  <div class="nav-item" onclick="quickSend('What did we work on last session? Check Obsidian memory')">
+    <div class="nav-dot"></div> Last Session
+  </div>
+</nav>
+
+<!-- MAIN -->
+<main>
+  <div id="offline-banner">⚠ QADIR CORE OFFLINE — Start main.py at E:\ABU\QADIR_CORE</div>
+  <div id="chat-messages">
+    <div class="msg system">QADIR OS · PROTOCOL MILLION · ALL SYSTEMS INITIALIZING</div>
+  </div>
+  <div class="input-bar">
+    <textarea id="user-input" rows="1" placeholder="Command Qadir…" onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
+    <button class="send-btn" id="send-btn" onclick="sendMessage()">Send</button>
+  </div>
+</main>
+
+<!-- SIDEBAR -->
+<div id="sidebar">
+  <div class="widget">
+    <div class="widget-title">Port Status</div>
+    <div id="port-list">
+      <div class="port-row">
+        <span class="port-name">ABUZ8 Agent OS</span>
+        <span class="port-num">:8930</span>
+        <div class="dot pinging" id="dot-8900"></div>
+      </div>
+      <div class="port-row">
+        <span class="port-name">OpenClaw</span>
+        <span class="port-num">:18789</span>
+        <div class="dot pinging" id="dot-18789"></div>
+      </div>
+      <div class="port-row">
+        <span class="port-name">Ollama</span>
+        <span class="port-num">:11434</span>
+        <div class="dot pinging" id="dot-11434"></div>
+      </div>
+      <div class="port-row">
+        <span class="port-name">ComfyUI</span>
+        <span class="port-num">:8188</span>
+        <div class="dot pinging" id="dot-8188"></div>
+      </div>
+      <div class="port-row">
+        <span class="port-name">Backend Health</span>
+        <span class="port-num">:8930</span>
+        <div class="dot pinging" id="dot-obs"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="widget">
+    <div class="widget-title">Obsidian Memory</div>
+    <div id="memory-list">
+      <div class="memory-item" style="color:var(--muted)">Loading vault…</div>
+    </div>
+  </div>
+
+  <div class="widget">
+    <div class="widget-title">Quick Commands</div>
+    <button class="qa-btn" onclick="quickSend('Run Protocol Million tests and report score')">▶ Protocol Million</button>
+    <button class="qa-btn" onclick="quickSend('Save this session to Obsidian memory')">💾 Save Session</button>
+    <button class="qa-btn" onclick="quickSend('What is my #1 priority right now for $1K/day?')">🎯 Priority Now</button>
+    <button class="qa-btn" onclick="quickSend('List all OpenClaw skills available')">⚡ List Skills</button>
+    <button class="qa-btn" onclick="quickSend('Check LotVue360 status and what needs to be done')">🚗 LotVue360</button>
+  </div>
+</div>
+
+<!-- FOOTER -->
+<footer>
+  <div>ABUZ8 LLC · Ahmad · Al-Buraq · EIN 41-5161931</div>
+  <div class="footer-right">
+    <span id="session-id">SESSION —</span>
+    <span id="msg-count">0 msgs</span>
+    <span>abuz8ai.com</span>
+  </div>
+</footer>
+
+<script>
+// ─────────────────────────────────────────
+// CONFIG — points to ABUZ8 Agent OS :8930
+// ─────────────────────────────────────────
+const API_BASE   = 'http://127.0.0.1:8930';  // ABUZ8 Agent OS backend
+const SESSION_ID = 'tui_' + Date.now();
+let msgCount = 0;
+let coreAlive = false;
+
+document.getElementById('session-id').textContent = 'SESSION ' + SESSION_ID.slice(-6);
+
+// ─── CLOCK ───
+function updateClock() {
+  const now = new Date();
+  document.getElementById('clock').textContent =
+    now.toLocaleTimeString('en-US', {hour12: false});
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+// ─── PORT PING ───
+async function pingPort(url, dotId) {
+  const dot = document.getElementById(dotId);
+  try {
+    const r = await fetch(url, {signal: AbortSignal.timeout(3000)});
+    dot.className = 'dot ' + (r.ok ? 'green' : 'red');
+    return r.ok;
+  } catch {
+    dot.className = 'dot red';
+    return false;
+  }
+}
+
+async function pingAll() {
+  const results = await Promise.all([
+    pingPort(`${API_BASE}/`,               'dot-8900'),
+    pingPort('http://localhost:18789/health', 'dot-18789'),
+    pingPort('http://localhost:11434/api/tags', 'dot-11434'),
+    pingPort('http://localhost:8188/system_stats', 'dot-8188'),
+    pingPort(`${API_BASE}/api/boot/report`, 'dot-obs'),
+  ]);
+
+  coreAlive = results[0];
+  const banner = document.getElementById('offline-banner');
+  banner.style.display = coreAlive ? 'none' : 'block';
+
+  // Update header badges
+  document.getElementById('core-badge').className =
+    'status-pill ' + (results[0] ? 'green' : 'red');
+  document.getElementById('core-badge').textContent =
+    results[0] ? 'CORE ONLINE' : 'CORE OFFLINE';
+  document.getElementById('obs-badge').className =
+    'status-pill ' + (results[4] ? 'green' : 'red');
+
+  addSystemMsg(`Port scan: Core ${results[0]?'✅':'❌'} · OpenClaw ${results[1]?'✅':'❌'} · Ollama ${results[2]?'✅':'❌'} · ComfyUI ${results[3]?'✅':'❌'} · Obsidian ${results[4]?'✅':'❌'}`);
+
+  return results;
+}
+
+// ─── MEMORY LIST ───
+async function loadMemories() {
+  try {
+    const r = await fetch(`${API_BASE}/api/memory/layer/L4`, {signal: AbortSignal.timeout(4000)});
+    if (!r.ok) throw new Error('not ok');
+    const data = await r.json();
+    const list = document.getElementById('memory-list');
+    const memories = (data.memories || data.items || data.entries || []).map(x=> (x.title||x.name||x.key||x));
+    if (memories.length === 0) {
+      list.innerHTML = '<div class="memory-item" style="color:var(--muted)">No memories yet</div>';
+    } else {
+      list.innerHTML = memories.slice(0, 8).map(m =>
+        `<div class="memory-item" onclick="quickSend('Load memory: ${m}')" title="${m}">${m}</div>`
+      ).join('');
+    }
+  } catch {
+    document.getElementById('memory-list').innerHTML =
+      '<div class="memory-item" style="color:var(--muted)">Vault offline</div>';
+  }
+}
+
+// ─── CHAT ───
+function addMsg(role, text) {
+  const container = document.getElementById('chat-messages');
+  const div = document.createElement('div');
+  div.className = `msg ${role}`;
+  const label = role === 'user' ? 'You' : role === 'assistant' ? 'Qadir' : '';
+  if (label) div.innerHTML = `<div class="msg-label">${label}</div>${escHtml(text)}`;
+  else div.textContent = text;
+  container.appendChild(div);
+  container.scrollTop = container.scrollHeight;
+  msgCount++;
+  document.getElementById('msg-count').textContent = msgCount + ' msgs';
+  return div;
+}
+
+function addSystemMsg(text) {
+  const container = document.getElementById('chat-messages');
+  const div = document.createElement('div');
+  div.className = 'msg system';
+  div.textContent = text;
+  container.appendChild(div);
+  container.scrollTop = container.scrollHeight;
+}
+
+function addTyping() {
+  const container = document.getElementById('chat-messages');
+  const div = document.createElement('div');
+  div.className = 'msg assistant';
+  div.id = 'typing-indicator';
+  div.innerHTML = '<div class="typing"><span></span><span></span><span></span></div>';
+  container.appendChild(div);
+  container.scrollTop = container.scrollHeight;
+  return div;
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+          .replace(/\n/g,'<br>');
+}
+
+async function sendMessage() {
+  const input = document.getElementById('user-input');
+  const text = input.value.trim();
+  if (!text) return;
+
+  input.value = '';
+  autoResize(input);
+  addMsg('user', text);
+
+  const btn = document.getElementById('send-btn');
+  btn.disabled = true;
+
+  if (!coreAlive) {
+    addMsg('assistant', '\u26a0 Backend offline. Start ABUZ8 Agent OS backend (scripts\\backend_only.bat) first.');
+    btn.disabled = false;
+    return;
+  }
+
+  const typingEl = addTyping();
+
+  try {
+    const r = await fetch(`${API_BASE}/api/inbox/send`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({content: text, session_id: SESSION_ID}),
+      signal: AbortSignal.timeout(30000)
+    });
+
+    typingEl.remove();
+
+    if (!r.ok) {
+      const err = await r.text().catch(() => r.status);
+      addMsg('assistant', `Error ${r.status}: ${err}`);
+    } else {
+      const data = await r.json().catch(() => null);
+      const reply = data?.response || data?.message || data?.content ||
+                    data?.reply || JSON.stringify(data);
+      addMsg('assistant', reply);
+      // Auto-refresh memories after every save-type message
+      if (text.toLowerCase().includes('save') || text.toLowerCase().includes('memory')) {
+        setTimeout(loadMemories, 1500);
+      }
+    }
+  } catch (e) {
+    typingEl?.remove();
+    addMsg('assistant', e.name === 'TimeoutError'
+      ? '⏱ Request timed out. Qadir may be processing — try again.'
+      : `Connection error: ${e.message}`);
+  }
+
+  btn.disabled = false;
+}
+
+function quickSend(text) {
+  document.getElementById('user-input').value = text;
+  sendMessage();
+}
+
+function handleKey(e) {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendMessage();
+  }
+}
+
+function autoResize(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+}
+
+function setView(view) {
+  document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+  event.target.closest('.nav-item').classList.add('active');
+  addSystemMsg(`VIEW: ${view.toUpperCase()}`);
+}
+
+function runTests() {
+  quickSend('Run Protocol Million test suite and give me the score');
+}
+
+function openObsidian() {
+  addSystemMsg('Open Obsidian from your taskbar to view the vault');
+}
+
+// ─── BOOT ───
+async function boot() {
+  addSystemMsg('Protocol Million — booting all systems…');
+  await pingAll();
+  await loadMemories();
+  if (coreAlive) {
+    addMsg('assistant',
+      'Qadir OS online. All systems checked.\n\nType a command or use the quick actions on the right. Say "status" for a full system report.');
+  } else {
+    addMsg('assistant',
+      'Backend offline. To start:\n\ncd E:\\ABU\\ABUZ8_AGENT_OS\nscripts\\backend_only.bat\n\nThen refresh this page.');
+  }
+  // Auto-refresh ports every 30s
+  setInterval(pingAll, 30000);
+  // Auto-refresh memories every 60s
+  setInterval(loadMemories, 60000);
+}
+
+boot();
+</script>
+</body>
+</html>

@@ -1,0 +1,10 @@
+{
+  "ts": "2026-06-07T17-26-15",
+  "mode": "propose_only",
+  "reason": "saturation: no refresh in >= 7 days",
+  "rolling_success": 0.875,
+  "n_turns": 8,
+  "would_train": "LoRA finetune on recent signal.jsonl",
+  "cost_usd_cap": 0.0,
+  "note": "No training performed (no GPU on this device). Human/GPU box acts on this receipt."
+}

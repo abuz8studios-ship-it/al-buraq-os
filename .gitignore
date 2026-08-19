@@ -1,0 +1,19 @@
+# Build artifacts — never belongs in source control
+build/dist/
+build/*.log
+build/*.err
+__pycache__/
+*.pyc
+
+# Model weights — too large for GitHub, ship via releases or a download script instead
+*.gguf
+powerpacks/*.gguf
+
+# Local data / runtime state
+data/logs/
+data/*.sqlite
+data/missions.sqlite
+
+# OS noise
+.DS_Store
+Thumbs.db

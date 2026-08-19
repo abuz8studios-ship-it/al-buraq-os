@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8">
+<title>Al-Buraq — booting</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%;overflow:hidden;background:#0a1628;font-family:'Segoe UI',system-ui,sans-serif}
+  .stage{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    background:radial-gradient(900px 600px at 50% 38%, #0f1f38 0%, #0a1628 60%, #081120 100%)}
+  .splash{width:min(56vw,560px);max-width:90vw;filter:drop-shadow(0 0 40px rgba(201,168,76,.25));
+    opacity:0;transform:scale(.96);animation:rise 2.2s ease-out forwards}
+  @keyframes rise{0%{opacity:0;transform:scale(.96)}100%{opacity:1;transform:scale(1)}}
+  .title{margin-top:26px;color:#eaf1fb;font-size:26px;letter-spacing:3px;font-weight:300;opacity:0;animation:fade 1.4s ease-out .8s forwards}
+  .title b{color:#e3c878;font-weight:600}
+  .sub{margin-top:6px;color:#6e87ad;font-size:12px;letter-spacing:4px;text-transform:uppercase;opacity:0;animation:fade 1.4s ease-out 1.2s forwards}
+  @keyframes fade{to{opacity:1}}
+  .bar{margin-top:34px;width:min(40vw,360px);height:3px;border-radius:3px;background:rgba(255,255,255,.08);overflow:hidden}
+  .bar i{display:block;height:100%;width:0;border-radius:3px;
+    background:linear-gradient(90deg,#1a8a7a,#c9a84c);transition:width .4s ease}
+  .status{margin-top:14px;color:#9fb4d4;font-size:12px;min-height:16px;letter-spacing:.5px}
+</style></head>
+<body>
+  <div class="stage">
+    <img class="splash" src="../assets/splash.png" alt="Al-Buraq" onerror="this.style.display='none'">
+    <div class="title">AL-<b>BURAQ</b></div>
+    <div class="sub">Sovereign Agent OS · by ABUZ8</div>
+    <div class="bar"><i id="prog"></i></div>
+    <div class="status" id="status">waking the brain…</div>
+  </div>
+<script>
+  const BACKEND = (location.protocol==='file:'||!location.port) ? 'http://127.0.0.1:8930' : '';
+  const steps = ['waking the brain…','loading agentic core…','mounting memory…','checking systems…','ready'];
+  let i=0; const prog=document.getElementById('prog'), status=document.getElementById('status');
+  function set(p,msg){prog.style.width=p+'%'; if(msg)status.textContent=msg;}
+  // honest boot: poll real backend health; advance bar with it, hand off when live
+  let pct=8; set(pct,steps[0]);
+  const tick=setInterval(()=>{ pct=Math.min(pct+7,92); set(pct, steps[Math.min(Math.floor(pct/20),steps.length-2)]); },500);
+  async function gate(){
+    try{
+      const r=await fetch(BACKEND+'/health',{cache:'no-store'});
+      if(r.ok){ clearInterval(tick); set(100,'ready'); setTimeout(()=>location.href='index.html',700); return; }
+    }catch(e){}
+    setTimeout(gate,800);
+  }
+  gate();
+  // safety: if backend never answers in 60s, hand off anyway (shell shows honest offline state)
+  setTimeout(()=>{ clearInterval(tick); location.href='index.html'; }, 60000);
+</script>
+</body></html>

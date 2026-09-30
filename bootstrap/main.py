@@ -14,7 +14,15 @@ assets) into a single .exe. On launch:
 The user moves NOTHING. One file. Double-click. It comes alive.
 """
 from __future__ import annotations
-import json, os, shutil, subprocess, sys, time, urllib.request, webbrowser
+
+import json
+import os
+import shutil
+import subprocess
+import sys
+import time
+import urllib.request
+import webbrowser
 from pathlib import Path
 
 APP_NAME = "Al-Buraq Agent OS"
@@ -29,7 +37,7 @@ def _meipass() -> Path:
 def _exe_dir() -> Path:
     return Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else Path.cwd()
 
-def banner():
+def banner() -> None:
     print("=" * 64)
     print("   " + APP_NAME + "  -  " + EDITION + " edition")
     print("   Sovereign, local-first, always-on. Your brain never dies.")
@@ -39,22 +47,32 @@ def banner():
 def choose_install_dir() -> Path:
     env = os.environ.get("ALBURAQ_INSTALL")
     if env:
-        d = Path(env); d.mkdir(parents=True, exist_ok=True); return d
-    cfg = (_exe_dir() / "albuq_install.json")
-    if not cfg.exists() and (Path.cwd()/"albuq_install.json").exists(): cfg = Path.cwd()/"albuq_install.json"
+        d = Path(env)
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+    cfg = _exe_dir() / "albuq_install.json"
+    if not cfg.exists() and (Path.cwd() / "albuq_install.json").exists():
+        cfg = Path.cwd() / "albuq_install.json"
     if cfg.exists():
         try:
-            d = Path(json.loads(cfg.read_text())["dir"]); 
-            if d.exists(): return d
-        except Exception: pass
-    default = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "ABUZ8" / ("AlBuraq-" + EDITION)
+            d = Path(json.loads(cfg.read_text(encoding="utf-8"))["dir"])
+            if d.exists():
+                return d
+        except Exception:
+            pass
+
+    default = Path(os.environ.get("LOCALAPPDATA", str(Path.home() / ".alburaq"))) / "ABUZ8" / ("AlBuraq-" + EDITION)
     chosen = None
     try:
         import tkinter as tk
         from tkinter import filedialog, messagebox
-        root = tk.Tk(); root.withdraw()
-        messagebox.showinfo(APP_NAME, "Choose where to install " + APP_NAME + " (" + EDITION + ").\n"
-                            "The brain and your data live here and stay even if you delete the app.")
+        root = tk.Tk()
+        root.withdraw()
+        messagebox.showinfo(
+            APP_NAME,
+            "Choose where to install " + APP_NAME + " (" + EDITION + ").\n"
+            "The brain and your data live here and stay even if you delete the app.",
+        )
         picked = filedialog.askdirectory(title="Install folder for " + APP_NAME)
         root.destroy()
         chosen = (Path(picked) / ("AlBuraq-" + EDITION)) if picked else default
@@ -64,11 +82,16 @@ def choose_install_dir() -> Path:
             chosen = Path(a) if a else default
         except Exception:
             chosen = default
+
     chosen.mkdir(parents=True, exist_ok=True)
-    cfg.write_text(json.dumps({"dir": str(chosen)}, indent=2))
+    try:
+        cfg.parent.mkdir(parents=True, exist_ok=True)
+        cfg.write_text(json.dumps({"dir": str(chosen)}, indent=2), encoding="utf-8")
+    except Exception:
+        pass
     return chosen
 
-def extract_payload(dest: Path):
+def extract_payload(dest: Path) -> None:
     """Copy bundled payload (backend, renderer, brain, assets) into dest ONCE."""
     src = _meipass() / "payload"
     if not src.exists() and (Path.cwd() / "payload").exists():
@@ -77,7 +100,8 @@ def extract_payload(dest: Path):
         src = Path(__file__).resolve().parent.parent
     marker = dest / ".extracted"
     if marker.exists():
-        print("[Al-Buraq] Already installed at " + str(dest), flush=True); return
+        print("[Al-Buraq] Already installed at " + str(dest), flush=True)
+        return
     print("[Al-Buraq] Installing to " + str(dest) + " (one-time)...", flush=True)
     for sub in ("backend", "renderer", "assets", "brain"):
         s = src / sub
@@ -85,30 +109,39 @@ def extract_payload(dest: Path):
             shutil.copytree(s, dest / sub, dirs_exist_ok=True)
             print("  + " + sub, flush=True)
     (dest / "data").mkdir(exist_ok=True)
-    marker.write_text(time.strftime("%Y-%m-%dT%H:%M:%S"))
+    marker.write_text(time.strftime("%Y-%m-%dT%H:%M:%S"), encoding="utf-8")
     print("[Al-Buraq] Install complete.", flush=True)
 
-def _port_up(port, path="/health"):
+def _port_up(port: int, path: str = "/health") -> bool:
     try:
         with urllib.request.urlopen("http://127.0.0.1:%d%s" % (port, path), timeout=2) as r:
             return r.status == 200
     except Exception:
         return False
 
-def start_backend(install: Path):
+def start_backend(install: Path) -> subprocess.Popen[bytes]:
     py = sys.executable
     server = install / "backend" / "server.py"
-    # When frozen, sys.executable is the exe; run the server in-process instead.
+    # When frozen, sys.executable is the exe; run server in-process instead.
     if getattr(sys, "frozen", False):
-        # launch a child of ourselves in "server mode" via env flag
-        env = dict(os.environ, ALBURAQ_DATA=str(install / "data"),
-                   ALBURAQ_PORT=str(BACKEND_PORT), ALBURAQ_BRAIN_PORT=str(BRAIN_PORT),
-                   ALBURAQ_ROOT=str(install), ALBURAQ_SERVER_MODE="1")
+        env = dict(
+            os.environ,
+            ALBURAQ_DATA=str(install / "data"),
+            ALBURAQ_PORT=str(BACKEND_PORT),
+            ALBURAQ_BRAIN_PORT=str(BRAIN_PORT),
+            ALBURAQ_ROOT=str(install),
+            ALBURAQ_SERVER_MODE="1",
+        )
         return subprocess.Popen([sys.executable], env=env)
-    return subprocess.Popen([py, str(server), "--port", str(BACKEND_PORT),
-                             "--data-dir", str(install / "data"), "--brain-port", str(BRAIN_PORT)])
+    return subprocess.Popen([
+        py,
+        str(server),
+        "--port", str(BACKEND_PORT),
+        "--data-dir", str(install / "data"),
+        "--brain-port", str(BRAIN_PORT),
+    ])
 
-def health_gate(timeout=90):
+def health_gate(timeout: float = 90) -> bool:
     print("[Al-Buraq] Waking the brain (always-on supervisor)...", flush=True)
     deadline = time.time() + timeout
     while time.time() < deadline:
@@ -117,7 +150,7 @@ def health_gate(timeout=90):
         time.sleep(0.7)
     return False
 
-def main():
+def main() -> None:
     banner()
     install = choose_install_dir()
     extract_payload(install)
@@ -125,8 +158,10 @@ def main():
     if health_gate():
         url = "http://127.0.0.1:%d/app/boot.html" % BACKEND_PORT
         print("[Al-Buraq] LIVE -> " + url, flush=True)
-        try: webbrowser.open(url)
-        except Exception: pass
+        try:
+            webbrowser.open(url)
+        except Exception:
+            pass
         print("[Al-Buraq] Running. Close this window to stop. Data stays at: " + str(install), flush=True)
     else:
         print("[Al-Buraq] Backend did not start in time. See data/logs.", flush=True)
@@ -135,17 +170,18 @@ def main():
     except KeyboardInterrupt:
         pass
     finally:
-        try: backend.terminate()
-        except Exception: pass
+        try:
+            backend.terminate()
+        except Exception:
+            pass
 
 if __name__ == "__main__":
-    # server-mode: when the frozen exe re-launches itself to BE the backend
     if os.environ.get("ALBURAQ_SERVER_MODE") == "1":
         root = Path(os.environ["ALBURAQ_ROOT"])
         sys.path.insert(0, str(root / "backend"))
         os.chdir(str(root))
         import uvicorn
         import server as srv
-        uvicorn.run(srv.app, host="127.0.0.1", port=int(os.environ.get("ALBURAQ_PORT", "8930")), log_level="info")
+        uvicorn.run(srv.app, host=os.environ.get("ALBURAQ_HOST", "0.0.0.0"), port=int(os.environ.get("ALBURAQ_PORT", "8930")), log_level="info")
     else:
         main()

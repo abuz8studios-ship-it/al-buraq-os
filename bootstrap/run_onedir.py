@@ -6,10 +6,17 @@ It reads them in place, starts the backend in-process, the never-die
 supervisor wakes the brain from brain/, and the browser opens.
 Nothing extracts. Nothing over 700MB. Copies to USB cleanly. Just works.
 """
-import os, sys, threading, time, webbrowser, urllib.request
+from __future__ import annotations
+
+import os
+import sys
+import threading
+import time
+import urllib.request
+import webbrowser
 from pathlib import Path
 
-def base_dir():
+def base_dir() -> Path:
     if getattr(sys, "frozen", False):
         return Path(sys.executable).resolve().parent
     return Path(__file__).resolve().parent.parent
@@ -17,14 +24,17 @@ def base_dir():
 BASE = base_dir()
 os.environ["ALBURAQ_ROOT"] = str(BASE)
 
-# data dir: prefer beside the exe (portable USB); fall back to LOCALAPPDATA if read-only
+# data dir: prefer beside the exe (portable USB); fall back to LOCALAPPDATA / ~/.alburaq if read-only
 data = BASE / "data"
 try:
     data.mkdir(exist_ok=True)
-    t = data / ".wtest"; t.write_text("x"); t.unlink()
+    t = data / ".wtest"
+    t.write_text("x", encoding="utf-8")
+    t.unlink()
 except Exception:
-    data = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "AlBuraq" / "data"
+    data = Path(os.environ.get("LOCALAPPDATA", str(Path.home() / ".alburaq"))) / "AlBuraq" / "data"
     data.mkdir(parents=True, exist_ok=True)
+
 os.environ["ALBURAQ_DATA"] = str(data)
 os.environ["ALBURAQ_PORT"] = "8930"
 os.environ["ALBURAQ_BRAIN_PORT"] = "8099"
@@ -36,7 +46,8 @@ def _open_when_ready():
         try:
             with urllib.request.urlopen("http://127.0.0.1:8930/health", timeout=2) as r:
                 if r.status == 200:
-                    webbrowser.open("http://127.0.0.1:8930/app/boot.html"); return
+                    webbrowser.open("http://127.0.0.1:8930/app/boot.html")
+                    return
         except Exception:
             pass
         time.sleep(1)
@@ -46,8 +57,9 @@ print("  AL-BURAQ AGENT OS  -  starting your sovereign AI...")
 print("  A browser window opens in a few seconds. Keep this open.")
 print("  Close this window to stop. Your data stays in this folder.")
 print("=" * 60, flush=True)
+
 threading.Thread(target=_open_when_ready, daemon=True).start()
 
 import uvicorn
 import server  # reads ALBURAQ_ROOT/DATA; supervisor auto-starts the brain
-uvicorn.run(server.app, host="127.0.0.1", port=8930, log_level="warning")
+uvicorn.run(server.app, host=os.environ.get("ALBURAQ_HOST", "0.0.0.0"), port=8930, log_level="warning")

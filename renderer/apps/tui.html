@@ -477,7 +477,7 @@
 // ─────────────────────────────────────────
 // CONFIG — points to ABUZ8 Agent OS :8930
 // ─────────────────────────────────────────
-const API_BASE   = 'http://127.0.0.1:8930';  // ABUZ8 Agent OS backend
+const API_BASE   = (location.protocol==='file:' || !location.port) ? 'http://127.0.0.1:8930' : '';  // ABUZ8 Agent OS backend
 const SESSION_ID = 'tui_' + Date.now();
 let msgCount = 0;
 let coreAlive = false;

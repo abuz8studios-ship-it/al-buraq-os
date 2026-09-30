@@ -13,6 +13,11 @@ powerpacks/*.gguf
 data/logs/
 data/*.sqlite
 data/missions.sqlite
+data/memory.sqlite
+data/skills/
+data/LEARNED.md
+data/brains.json
+data/connectors.json
 
 # OS noise
 .DS_Store

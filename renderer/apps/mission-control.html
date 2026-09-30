@@ -1267,7 +1267,7 @@
 
 <script>
 // ════════════ ABUZ8 Agent OS — LIVE RUNTIME (wired) ════════════
-const API = 'http://127.0.0.1:8930';
+const API = (location.protocol==='file:' || !location.port) ? 'http://127.0.0.1:8930' : '';
 async function apiGet(path){try{const r=await fetch(API+path,{cache:'no-store',signal:AbortSignal.timeout(5000)});return r.ok?await r.json():{__err:r.status};}catch(e){return {__err:'offline'};}}
 async function apiPost(path,body){try{const r=await fetch(API+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{}),signal:AbortSignal.timeout(15000)});return r.ok?await r.json():{__err:r.status};}catch(e){return {__err:'offline'};}}
 function toast(msg,kind){let t=document.getElementById('abz-toast');if(!t){t=document.createElement('div');t.id='abz-toast';t.style.cssText='position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:9999;background:#10203b;border:1px solid #1f3a63;color:#eaf1fb;padding:12px 18px;border-radius:10px;font-size:13px;box-shadow:0 12px 40px rgba(0,0,0,.5);max-width:560px;transition:opacity .3s';document.body.appendChild(t);}t.style.borderColor=kind==='ok'?'#2bb6a0':kind==='err'?'#c8536b':'#c9a84c';t.textContent=msg;t.style.opacity='1';clearTimeout(t._h);t._h=setTimeout(()=>t.style.opacity='0',4200);}

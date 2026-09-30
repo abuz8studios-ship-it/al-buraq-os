@@ -131,7 +131,7 @@ body:after{content:"";position:fixed;inset:0;z-index:-4;opacity:.28;pointer-even
 
 <script>
 // ════ ABUZ8 Agent OS LIVE RUNTIME ════
-const API='http://127.0.0.1:8930';
+const API=(location.protocol==='file:' || !location.port) ? 'http://127.0.0.1:8930' : '';
 async function apiPost(path,body){try{const r=await fetch(API+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{}),signal:AbortSignal.timeout(15000)});return r.ok?await r.json():{__err:r.status};}catch(e){return {__err:'offline'};}}
 async function apiGet(path){try{const r=await fetch(API+path,{cache:'no-store',signal:AbortSignal.timeout(5000)});return r.ok?await r.json():{__err:r.status};}catch(e){return {__err:'offline'};}}
 const system={

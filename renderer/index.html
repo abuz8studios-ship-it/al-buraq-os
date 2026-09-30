@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ABUZ8 Agent OS</title>
+<title>Al-Buraq Agent OS — Sovereign Desktop</title>
 <style>
 :root{
   --lapis:#0a1628; --lapis2:#0f1f38; --panel:#10203b; --line:#1f3a63;
@@ -18,7 +18,7 @@ body{
     radial-gradient(1100px 560px at 82% -8%, rgba(26,138,122,.10), transparent 60%),
     radial-gradient(820px 460px at 8% 112%, rgba(201,168,76,.09), transparent 55%),
     linear-gradient(160deg, rgba(8,17,32,.82), rgba(10,22,48,.78) 52%, rgba(11,24,48,.85)),
-    url('../assets/wallpaper.png') center/cover no-repeat,
+    url('/assets/wallpaper.png') center/cover no-repeat,
     linear-gradient(160deg,#081120,#0a1628 52%,#0b1830);
   display:flex; flex-direction:column;
 }
@@ -37,7 +37,7 @@ body{
 .clock{font-variant-numeric:tabular-nums;color:var(--dim);font-size:12.5px;min-width:54px;text-align:right}
 .launcher{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:34px;padding:40px}
 .hero{text-align:center}
-.hero h1{font-size:30px;font-weight:700;letter-spacing:.5px}
+.hero h1{font-size:32px;font-weight:700;letter-spacing:.5px}
 .hero h1 b{color:var(--gold2)}
 .hero p{color:var(--dim);font-size:14px;margin-top:8px}
 .cards{display:grid;grid-template-columns:repeat(3,minmax(220px,300px));gap:20px}
@@ -64,8 +64,8 @@ iframe{flex:1;border:none;width:100%;background:#0a1628}
 <div class="bar">
   <div class="mark">A</div>
   <div>
-    <div class="title">ABUZ8 <b>Agent OS</b></div>
-    <div class="sub">Sovereign Desktop</div>
+    <div class="title">AL-BURAQ <b>Agent OS</b></div>
+    <div class="sub">Sovereign Desktop · by ABUZ8</div>
   </div>
   <div class="spacer"></div>
   <div class="health"><span class="hdot" id="hdot"></span><span id="hlabel">checking backend…</span></div>
@@ -74,7 +74,7 @@ iframe{flex:1;border:none;width:100%;background:#0a1628}
 
 <div class="launcher" id="launcher">
   <div class="hero">
-    <h1>ABUZ8 <b>Agent OS</b></h1>
+    <h1>AL-BURAQ <b>Agent OS</b></h1>
     <p>Choose an interface. Every console is wired live to the backend on :8930.</p>
   </div>
   <div class="cards">
@@ -97,7 +97,7 @@ iframe{flex:1;border:none;width:100%;background:#0a1628}
       <div class="go">Launch →</div>
     </div>
   </div>
-  <div class="foot">ABUZ8 LLC · backend :8930 · all interfaces share one live runtime</div>
+  <div class="foot">ABUZ8 LLC · backend :8930 · all interfaces share one live sovereign runtime</div>
 </div>
 
 <div class="frame" id="frame">
@@ -110,30 +110,43 @@ iframe{flex:1;border:none;width:100%;background:#0a1628}
 </div>
 
 <script>
-const BACKEND='http://127.0.0.1:8930';
-function openApp(file,name){
-  document.getElementById('appframe').src='apps/'+file+'.html';
-  document.getElementById('frameName').textContent=name;
-  document.getElementById('frameSrc').textContent='apps/'+file+'.html · :8930';
+const BACKEND = (location.protocol==='file:' || !location.port) ? 'http://127.0.0.1:8930' : '';
+function openApp(file, name){
+  document.getElementById('appframe').src = '/app/apps/' + file + '.html';
+  document.getElementById('frameName').textContent = name;
+  document.getElementById('frameSrc').textContent = 'apps/' + file + '.html · :8930';
   document.getElementById('launcher').classList.add('hide');
   document.getElementById('frame').classList.add('show');
 }
 function goHome(){
-  document.getElementById('appframe').src='about:blank';
+  document.getElementById('appframe').src = 'about:blank';
   document.getElementById('frame').classList.remove('show');
   document.getElementById('launcher').classList.remove('hide');
 }
 async function checkBackend(){
   const dot=document.getElementById('hdot'), lab=document.getElementById('hlabel');
   try{
-    const r=await fetch(BACKEND+'/',{cache:'no-store',signal:AbortSignal.timeout(3000)});
-    if(r.ok){dot.className='hdot ok';lab.textContent='backend live :8930';}
-    else{dot.className='hdot dead';lab.textContent='backend error '+r.status;}
-  }catch(e){dot.className='hdot dead';lab.textContent='backend offline :8930';}
+    const r=await fetch(BACKEND + '/health', {cache:'no-store', signal:AbortSignal.timeout(3000)});
+    if(r.ok){
+      const data=await r.json();
+      dot.className='hdot ok';
+      lab.textContent=data.brain_reachable ? 'brain + backend live :8930' : 'backend live (offline floor)';
+    } else {
+      dot.className='hdot dead';
+      lab.textContent='backend error '+r.status;
+    }
+  }catch(e){
+    dot.className='hdot dead';
+    lab.textContent='backend offline :8930';
+  }
 }
-function tick(){document.getElementById('clock').textContent=new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});}
-tick();setInterval(tick,1000);
-checkBackend();setInterval(checkBackend,10000);
+function tick(){
+  document.getElementById('clock').textContent = new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+}
+tick();
+setInterval(tick, 1000);
+checkBackend();
+setInterval(checkBackend, 8000);
 </script>
 </body>
 </html>

@@ -267,6 +267,117 @@ TOOL_ALIASES: dict[str, str] = {
     "law_lookup": "builders_book_query",
 }
 
+# ── tool directive parsing (balanced-brace, string-aware) ─────────────────────
+def _extract_tool_directives(text: str) -> list[tuple[str, str | None]]:
+    """Extract {{tool: NAME | {json-args}}} directives.
+
+    Uses a balanced-brace, string-aware scan for the args instead of a
+    non-greedy regex — nested JSON objects and braces inside JSON strings
+    parse correctly (probe 2026-10-01: the old regex returned {} for
+    nested args and broke quoted user text injected into directives).
+    """
+    out: list[tuple[str, str | None]] = []
+    marker = "{{tool:"
+    idx = 0
+    n = len(text)
+    while True:
+        start = text.find(marker, idx)
+        if start == -1:
+            break
+        i = start + len(marker)
+        while i < n and text[i].isspace():
+            i += 1
+        name_start = i
+        while i < n and (text[i].isalnum() or text[i] in "_-"):
+            i += 1
+        name = text[name_start:i]
+        if not name:
+            idx = start + len(marker)
+            continue
+        while i < n and text[i].isspace():
+            i += 1
+
+        args_str: str | None = None
+        if i < n and text[i] == "|":
+            i += 1
+            while i < n and text[i].isspace():
+                i += 1
+            if i < n and text[i] == "{":
+                depth, in_str, esc, j = 0, False, False, i
+                while j < n:
+                    ch = text[j]
+                    if in_str:
+                        if esc:
+                            esc = False
+                        elif ch == "\\":
+                            esc = True
+                        elif ch == '"':
+                            in_str = False
+                    else:
+                        if ch == '"':
+                            in_str = True
+                        elif ch == "{":
+                            depth += 1
+                        elif ch == "}":
+                            depth -= 1
+                            if depth == 0:
+                                break
+                    j += 1
+                if depth == 0 and j < n:
+                    args_str = text[i : j + 1]
+                    i = j + 1
+                else:  # unbalanced braces — skip this candidate
+                    idx = start + len(marker)
+                    continue
+            # '|'' present but no JSON object: treat as argless directive
+
+        while i < n and text[i].isspace():
+            i += 1
+        if text[i : i + 2] == "}}":
+            consumed = 2
+        elif text[i : i + 1] == "}":
+            consumed = 1  # tolerant: single closing brace accepted
+        else:
+            idx = start + len(marker)
+            continue
+        out.append((name, args_str))
+        idx = i + consumed
+    return out
+
+
+def _directive(name: str, args: dict[str, Any] | None = None) -> str:
+    """Build a tool directive with JSON-safe escaping (json.dumps, never f-strings
+    around raw user text — quotes/backslashes/newlines in user input must not
+    corrupt the args object)."""
+    if args:
+        return "{{tool: " + name + " | " + json.dumps(args, ensure_ascii=False) + "}}"
+    return "{{tool: " + name + "}}"
+
+
+# ── local-brain preflight (short, TTL-cached) ────────────────────────────────
+_LOCAL_HEALTH: dict[str, tuple[float, bool]] = {}
+
+
+def _local_brain_up(url: str, timeout: float = 0.6, ttl: float = 2.0) -> bool:
+    """Cheap cached reachability probe so offline turns skip 2x 30s HTTP retries.
+    On a black-holed port this is the difference between ~1s and ~60s per turn."""
+    now = time.time()
+    hit = _LOCAL_HEALTH.get(url)
+    if hit and now - hit[0] < ttl:
+        return hit[1]
+    up = False
+    for path in ("/health", "/v1/models"):
+        try:
+            with urllib.request.urlopen(url + path, timeout=timeout) as r:
+                if r.status == 200:
+                    up = True
+                    break
+        except Exception:
+            pass
+    _LOCAL_HEALTH[url] = (now, up)
+    return up
+
+
 # ── guardrails ─────────────────────────────────────────────────────────────────
 @dataclass
 class Guard:
@@ -317,12 +428,14 @@ class AgentLoop:
         return TOOL_ALIASES.get(name, name)
 
     def _get_learned_context(self) -> str:
-        """Inject LEARNED.md corrections into prompt context (Chapter 3.4)."""
+        """Inject LEARNED.md corrections into prompt context (Chapter 3.4).
+        Reads the TAIL: entries are appended chronologically, so the newest
+        corrections are the ones worth injecting (the head is stale history)."""
         if self.learned_path.exists():
             try:
                 content = self.learned_path.read_text(encoding="utf-8").strip()
                 if content:
-                    return f"\n\nLEARNED CORRECTIONS & MEMORY:\n{content[:2000]}"
+                    return f"\n\nLEARNED CORRECTIONS & MEMORY:\n{content[-2000:]}"
             except Exception:
                 pass
         return ""
@@ -337,6 +450,12 @@ class AgentLoop:
         url = prov.get("url", self.brain_url).rstrip("/")
         model = prov.get("model", "embedded")
         prov_type = prov.get("type", "local")
+
+        # Preflight: if the local floor engine is provably unreachable, go
+        # straight to sovereign offline reasoning. Never burn 2x30s HTTP
+        # retries against a dead/black-holed port (probe-verified latency fix).
+        if prov_type == "local" and not _local_brain_up(url):
+            return self._offline_reason(messages, error="local brain unreachable (preflight)")
 
         headers = {"Content-Type": "application/json"}
         if prov_type == "openai" and prov.get("key"):
@@ -433,21 +552,22 @@ class AgentLoop:
             except Exception:
                 return {"text": "Tool executed and results verified successfully.", "provider": "sovereign_offline"}
 
-        # 2. Tool invocation triggers
+        # 2. Tool invocation triggers (word-boundary matched; directives built
+        # with json.dumps so quotes/backslashes in user text cannot corrupt args)
         if any(w in u_low for w in ("builders book", "builder's book", "law of the probe", "builders law", "jabaar", "ahmad odeh")):
-            return {"text": f"{{{{tool: builders_book_query | {{\"query\": \"{user_msg}\"}}}}}}", "provider": "sovereign_offline", "degraded": True}
-        if any(w in u_low for w in ("time", "what time", "date", "clock", "now")):
-            return {"text": "{{tool: now}}", "provider": "sovereign_offline", "degraded": True}
+            return {"text": _directive("builders_book_query", {"query": user_msg}), "provider": "sovereign_offline", "degraded": True}
+        if re.search(r"\b(what time|time is it|current time|the time|time|clock|date|now)\b", u_low) and not re.search(r"\b(timeout|timeline|runtime|timesheet)\b", u_low):
+            return {"text": _directive("now"), "provider": "sovereign_offline", "degraded": True}
         if any(w in u_low for w in ("specs", "system", "device", "disk", "cpu", "hardware", "memory stats")):
-            return {"text": "{{tool: device_info}}", "provider": "sovereign_offline", "degraded": True}
-        if "calculate" in u_low or "math" in u_low or re.search(r"\b\d+[\s\+\-\*\/]+\d+\b", u_low):
+            return {"text": _directive("device_info"), "provider": "sovereign_offline", "degraded": True}
+        if "calculate" in u_low or "math" in u_low or re.search(r"\b\d+[\s\+\*\/\%]+\d+\b", u_low):
             math_match = re.search(r"(\d+[\s\+\-\*\/\%]+[\d\s\+\-\*\/\%\(\)\.]+)", u_low)
             expr = math_match.group(1).strip() if math_match else "2 + 2"
-            return {"text": f"{{{{tool: math | {{\"expr\": \"{expr}\"}}}}}}", "provider": "sovereign_offline", "degraded": True}
+            return {"text": _directive("math", {"expr": expr}), "provider": "sovereign_offline", "degraded": True}
         if any(w in u_low for w in ("remember", "save note", "record")):
-            return {"text": f"{{{{tool: memory_store | {{\"key\": \"user_note_{int(time.time())}\", \"content\": \"{user_msg}\", \"layer\": \"L3\"}}}}}}", "provider": "sovereign_offline", "degraded": True}
+            return {"text": _directive("memory_store", {"key": f"user_note_{int(time.time())}", "content": user_msg, "layer": "L3"}), "provider": "sovereign_offline", "degraded": True}
         if any(w in u_low for w in ("recall", "search memory", "find note")):
-            return {"text": f"{{{{tool: memory_recall | {{\"query\": \"{user_msg}\"}}}}}}", "provider": "sovereign_offline", "degraded": True}
+            return {"text": _directive("memory_recall", {"query": user_msg}), "provider": "sovereign_offline", "degraded": True}
 
         # 3. General sovereign response
         return {
@@ -461,12 +581,9 @@ class AgentLoop:
         """ACT pillar: Extract {{tool: name | json-args}}, resolve aliases, execute with guardrails."""
         results: list[dict[str, Any]] = []
 
-        # Find {{tool: ...}} patterns with balanced brace parsing
-        pattern = re.compile(r"\{\{tool:\s*([a-zA-Z0-9_-]+)(?:\s*\|\s*(\{.*?\}))?\s*\}\}", re.DOTALL)
-        for m in pattern.finditer(text):
-            raw_name = m.group(1)
+        # Balanced-brace, string-aware scan (nested JSON args now survive intact)
+        for raw_name, args_str in _extract_tool_directives(text):
             name = self._resolve_tool_name(raw_name)
-            args_str = m.group(2)
             args: dict[str, Any] = {}
             if args_str:
                 try:
@@ -476,6 +593,8 @@ class AgentLoop:
                         args = ast.literal_eval(args_str)
                     except Exception:
                         args = {}
+                if not isinstance(args, dict):
+                    args = {}
 
             sig = f"{name}:{json.dumps(args, sort_keys=True)}"
             if guard.duplicate(sig):
@@ -536,10 +655,21 @@ class AgentLoop:
                     session_id=rec.get("session"),
                 )
 
-                # Write to LEARNED.md
+                # Write to LEARNED.md (bounded: rotate at MAX so it never grows unbounded;
+                # keep the newest entries, which are the ones injected into prompts)
                 learned_entry = f"- [{rec.get('ts')}] Session: {rec.get('session', 'default')} | Turn: {rec.get('user', '')[:80]} -> Reply ({rec.get('reply_len', 0)} chars) via {rec.get('provider')}\n"
                 with open(self.learned_path, "a", encoding="utf-8") as lf:
                     lf.write(learned_entry)
+                try:
+                    if self.learned_path.stat().st_size > 65536:
+                        lines = self.learned_path.read_text(encoding="utf-8").splitlines()
+                        kept = lines[-300:]
+                        self.learned_path.write_text(
+                            "# LEARNED.md — rotating log (newest 300 kept)\n" + "\n".join(kept) + "\n",
+                            encoding="utf-8",
+                        )
+                except Exception:
+                    pass
             except Exception:
                 pass
 

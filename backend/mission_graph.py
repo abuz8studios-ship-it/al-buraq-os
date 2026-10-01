@@ -113,11 +113,12 @@ class MissionGraph:
             return missions
 
     def advance(self, mid: str, executor: Callable[[dict[str, Any]], dict[str, Any]] | None = None) -> dict[str, Any]:
-        """Run the next pending node. Stops at an unapproved approval gate (pause)."""
+        """Run the next pending node. Stops at an unapproved approval gate (pause).
+        Nodes whose gate was approved (status='approved') proceed to execution."""
         now = time.time()
         with self._c() as c:
             n = c.execute(
-                "SELECT * FROM nodes WHERE mission_id=? AND status IN ('pending', 'awaiting_approval') ORDER BY seq LIMIT 1",
+                "SELECT * FROM nodes WHERE mission_id=? AND status IN ('pending', 'approved', 'awaiting_approval') ORDER BY seq LIMIT 1",
                 (mid,),
             ).fetchone()
 
@@ -161,24 +162,40 @@ class MissionGraph:
             return {"done": remaining == 0, "paused": False, "node": node, "mission_status": new_mission_status}
 
     def approve(self, mid: str, node_id: str | None = None) -> dict[str, Any]:
+        """Approve a gated node. If the node carries a payload, mark it
+        'approved' so the NEXT advance() actually executes its side effect —
+        the gate approves the action, it must not silently skip it. Payload-less
+        pure checkpoints go straight to 'done' (no action to execute)."""
         now = time.time()
         with self._c() as c:
             if node_id:
-                c.execute(
-                    "UPDATE nodes SET status='done', completed_at=? WHERE id=? AND mission_id=?",
-                    (now, node_id, mid),
-                )
+                n = c.execute(
+                    "SELECT id, payload FROM nodes WHERE id=? AND mission_id=?",
+                    (node_id, mid),
+                ).fetchone()
             else:
                 # Approve first awaiting_approval node
                 n = c.execute(
-                    "SELECT id FROM nodes WHERE mission_id=? AND status='awaiting_approval' ORDER BY seq LIMIT 1",
+                    "SELECT id, payload FROM nodes WHERE mission_id=? AND status='awaiting_approval' ORDER BY seq LIMIT 1",
                     (mid,),
                 ).fetchone()
-                if n:
-                    node_id = n["id"]
+                node_id = n["id"] if n else None
+
+            if n and node_id:
+                payload = {}
+                try:
+                    payload = json.loads(n["payload"]) if n["payload"] else {}
+                except Exception:
+                    payload = {}
+                if payload:
                     c.execute(
-                        "UPDATE nodes SET status='done', completed_at=? WHERE id=?",
-                        (now, node_id),
+                        "UPDATE nodes SET status='approved' WHERE id=? AND mission_id=?",
+                        (node_id, mid),
+                    )
+                else:
+                    c.execute(
+                        "UPDATE nodes SET status='done', completed_at=? WHERE id=? AND mission_id=?",
+                        (now, node_id, mid),
                     )
 
             c.execute("UPDATE missions SET status='active', updated=? WHERE id=?", (now, mid))

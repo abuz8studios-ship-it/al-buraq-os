@@ -50,9 +50,11 @@ def choose_install_dir() -> Path:
         d = Path(env)
         d.mkdir(parents=True, exist_ok=True)
         return d
-    cfg = _exe_dir() / "albuq_install.json"
-    if not cfg.exists() and (Path.cwd() / "albuq_install.json").exists():
-        cfg = Path.cwd() / "albuq_install.json"
+    # canonical name fixed (was misspelled "albuq_install.json"); legacy file still honored
+    cfg = _exe_dir() / "alburaq_install.json"
+    for candidate in (_exe_dir() / "albuq_install.json", Path.cwd() / "alburaq_install.json", Path.cwd() / "albuq_install.json"):
+        if not cfg.exists() and candidate.exists():
+            cfg = candidate
     if cfg.exists():
         try:
             d = Path(json.loads(cfg.read_text(encoding="utf-8"))["dir"])

@@ -29,6 +29,7 @@ from typing import Any
 PROMOTE_THRESHOLD = 0.66       # score a proposed skill must reach
 MIN_PATTERN_COUNT = 2          # a pattern must repeat this many times to propose
 MAX_PROPOSALS_PER_CYCLE = 5
+MAX_HARVEST_ROWS = 5000        # harvest reads only the recent tail — bounded cost
 
 
 class SelfLearningLoop:
@@ -44,18 +45,16 @@ class SelfLearningLoop:
 
     # ── HARVEST ────────────────────────────────────────────────────────────────
     def harvest(self) -> list[dict[str, Any]]:
-        if not self.signal.exists():
-            return []
-        rows: list[dict[str, Any]] = []
-        for line in self.signal.read_text(encoding="utf-8").splitlines():
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                rows.append(json.loads(line))
-            except Exception:
-                continue
-        return rows
+        """Recent-tail harvest (bounded): pattern detection only needs recent
+        behavior, and cost must not grow with history size."""
+        from jsonl_io import tail_jsonl
+        return tail_jsonl(self.signal, MAX_HARVEST_ROWS)
+
+    def last_cycle_ts(self) -> str | None:
+        """Timestamp of the last REAL learning cycle (from the audit log)."""
+        from jsonl_io import tail_jsonl
+        rows = tail_jsonl(self.log, 1)
+        return rows[-1].get("ts") if rows else None
 
     # ── PROPOSE ────────────────────────────────────────────────────────────────
     def propose(self, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:

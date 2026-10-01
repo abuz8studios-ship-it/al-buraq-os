@@ -25,6 +25,7 @@ MIN_NEW_SIGNAL = 5            # demo/test sized; production ~200
 REGRESSION_THRESH = 0.05     # 5% drop vs baseline
 SATURATION_DAYS = 7
 MAX_TRIGGER_PER_DAY = 2
+MAX_SIGNAL_ROWS = 5000        # rolling success is computed over the recent tail
 
 
 class SelfUpgradeLoop:
@@ -38,18 +39,9 @@ class SelfUpgradeLoop:
             d.mkdir(parents=True, exist_ok=True)
 
     def _rows(self) -> list[dict[str, Any]]:
-        if not self.signal.exists():
-            return []
-        out: list[dict[str, Any]] = []
-        for ln in self.signal.read_text(encoding="utf-8").splitlines():
-            ln = ln.strip()
-            if not ln:
-                continue
-            try:
-                out.append(json.loads(ln))
-            except Exception:
-                pass
-        return out
+        """Recent-tail read (bounded) — rolling success over fresh signal."""
+        from jsonl_io import tail_jsonl
+        return tail_jsonl(self.signal, MAX_SIGNAL_ROWS)
 
     def _rolling_success(self, rows: list[dict[str, Any]]) -> tuple[float | None, int]:
         turns = [r for r in rows if r.get("kind") == "turn" or "ok" in r]

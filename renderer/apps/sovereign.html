@@ -108,10 +108,10 @@ body:after{content:"";position:fixed;inset:0;z-index:-4;opacity:.28;pointer-even
   </main>
 
   <aside class="sideRight">
-    <div class="sidePanel"><div class="st"><span>Agentic Connectors</span><span>8</span></div><div class="providers" id="connectors"></div></div>
-    <div class="sidePanel"><div class="st"><span>Model Router</span><span>ACTIVE</span></div><div class="providers"><div class="provider"><div class="dot"></div>Anthropic</div><div class="provider"><div class="dot"></div>OpenAI</div><div class="provider"><div class="dot"></div>Google</div><div class="provider"><div class="dot"></div>xAI</div><div class="provider"><div class="dot"></div>Cerebras</div><div class="provider"><div class="dot"></div>Groq</div><div class="provider"><div class="dot"></div>Cloudflare</div><div class="provider"><div class="dot"></div>Local</div></div></div>
-    <div class="sidePanel"><div class="st">Token & Cost 7D</div><div class="kpi"><div class="bigBox"><strong>128,420</strong><span>Tokens used</span></div><div class="bigBox"><strong>$0.87</strong><span>Total cost</span></div></div></div>
-    <div class="sidePanel"><div class="st">Memory Layers</div><div class="mem"><span>L1 Flash</span><div class="miniBar"><b style="width:98%"></b></div><span>98%</span></div><div class="mem"><span>L2 Session</span><div class="miniBar"><b style="width:82%"></b></div><span>82%</span></div><div class="mem"><span>L3 Long</span><div class="miniBar"><b style="width:68%"></b></div><span>68%</span></div><div class="mem"><span>L4 Archive</span><div class="miniBar"><b style="width:34%"></b></div><span>34%</span></div></div>
+    <div class="sidePanel"><div class="st"><span>Agentic Connectors</span><span id="connCount">—</span></div><div class="providers" id="connectors"></div></div>
+    <div class="sidePanel"><div class="st"><span>Model Router</span><span id="routerState">ACTIVE</span></div><div class="providers" id="routerProviders"></div></div>
+    <div class="sidePanel"><div class="st">Signal & Cost (local-first)</div><div class="kpi"><div class="bigBox"><strong id="kpiTurns">—</strong><span>Turns logged (signal.jsonl)</span></div><div class="bigBox"><strong>$0.00</strong><span>Cost — sovereign local floor</span></div></div></div>
+    <div class="sidePanel"><div class="st">Memory Layers <span id="memState" style="letter-spacing:0;text-transform:none"></span></div><div class="mem"><span>L1 Flash</span><div class="miniBar"><b id="membar-L1" style="width:0%"></b></div><span id="memcnt-L1">—</span></div><div class="mem"><span>L2 Session</span><div class="miniBar"><b id="membar-L2" style="width:0%"></b></div><span id="memcnt-L2">—</span></div><div class="mem"><span>L3 Long</span><div class="miniBar"><b id="membar-L3" style="width:0%"></b></div><span id="memcnt-L3">—</span></div><div class="mem"><span>L4 Archive</span><div class="miniBar"><b id="membar-L4" style="width:0%"></b></div><span id="memcnt-L4">—</span></div></div>
     <div class="sidePanel"><div class="st">Agent Health</div><div class="agent"><div class="avatar" style="width:32px;height:32px;font-size:18px">🧔</div><div>Zait<br><small>Executive Assistant</small></div><span style="color:var(--emerald)">Online</span></div><div class="agent"><div class="avatar" style="width:32px;height:32px;font-size:18px">👩</div><div>Aisha<br><small>Research Analyst</small></div><span style="color:var(--emerald)">Online</span></div><div class="agent"><div class="avatar" style="width:32px;height:32px;font-size:18px">👨</div><div>Khalid<br><small>DevOps Engineer</small></div><span style="color:var(--warn)">Idle</span></div></div>
   </aside>
 
@@ -155,7 +155,7 @@ const system={
 };
 const connectors=['DeerFlow','CrewAI','Manus','OpenClaw','Agent Zero','Hermes','Mercury','ZeroClaw'];
 
-function init(){renderEditions();renderApps();renderDock();renderStore();renderModels();renderAgents();renderConnectors();log('system.boot','Boot selector loaded','Qadir Core OS');tick();setInterval(tick,1000);makeWindowsDraggable();}
+function init(){renderEditions();renderApps();renderDock();renderStore();renderModels();renderAgents();renderConnectors();hydrateTelemetry();setInterval(hydrateTelemetry,15000);log('system.boot','Boot selector loaded','Qadir Core OS');tick();setInterval(tick,1000);makeWindowsDraggable();}
 function renderEditions(){const grid=document.getElementById('editionGrid');grid.innerHTML=Object.entries(system.editions).map(([k,e])=>`<div class="edition ${k===system.selectedEdition?'active':''}" onclick="selectEdition('${k}')"><div class="edIcon">${e.icon}</div><h3>${e.name}</h3><small>${e.sub}</small><div class="tag">${k}</div></div>`).join('')}
 function selectEdition(k){system.selectedEdition=k;document.getElementById('bootEdition').textContent=system.editions[k].name.toUpperCase();renderEditions()}
 function setStartMode(m,el){system.startMode=m;document.querySelectorAll('.chipBtn').forEach(b=>b.classList.remove('active'));el.classList.add('active')}
@@ -168,6 +168,43 @@ function renderStore(){document.getElementById('storeGrid').innerHTML=Object.ent
 function renderModels(){document.getElementById('modelTable').innerHTML='<thead><tr><th>Provider / Model</th><th>Status</th><th>Routing Use</th><th>Action</th></tr></thead><tbody>'+system.models.map(m=>`<tr><td>${m[0]}</td><td><span class="pill">${m[1]}</span></td><td>${m[2]}</td><td><button class="btn" onclick="log('model.select','Selected ${m[0]}','system.models.json')">Use</button></td></tr>`).join('')+'</tbody>'}
 function renderAgents(){document.getElementById('agentTable').innerHTML='<thead><tr><th>Role</th><th>Framework</th><th>Status</th><th>Purpose</th></tr></thead><tbody>'+system.agents.map(a=>`<tr><td>${a[0]}</td><td>${a[1]}</td><td><span class="pill">${a[2]}</span></td><td>${a[3]}</td></tr>`).join('')+'</tbody>'}
 function renderConnectors(){document.getElementById('connectors').innerHTML=connectors.map(c=>`<div class="provider"><div class="dot"></div>${c}</div>`).join('')}
+// ── HONEST TELEMETRY: side panels show LIVE backend state, never hardcoded numbers ──
+async function hydrateTelemetry(){
+  // Memory layers ← /api/memory/stats
+  const stats=await apiGet('/api/memory/stats');
+  const memState=document.getElementById('memState');
+  if(stats.__err){memState.textContent='· offline';}
+  else{
+    memState.textContent='· '+(stats.total||0)+' entries';
+    const layers=(stats.layers||{});const max=Math.max(1,...Object.values(layers).map(Number));
+    for(const L of ['L1','L2','L3','L4']){
+      const n=Number(layers[L]||0);
+      const bar=document.getElementById('membar-'+L),cnt=document.getElementById('memcnt-'+L);
+      if(bar)bar.style.width=Math.round(100*n/max)+'%';
+      if(cnt)cnt.textContent=n;
+    }
+  }
+  // Turns logged ← /api/signal/tail
+  const sig=await apiGet('/api/signal/tail?limit=1');
+  const kpi=document.getElementById('kpiTurns');
+  if(sig.__err){kpi.textContent='—';}
+  else{kpi.textContent=sig.total_count_is_exact===false?(String(sig.signals?.length||0)+'+'):(sig.total_count??sig.signals?.length??0);}
+  // Model router ← /api/brains/config (real providers only)
+  const cfg=await apiGet('/api/brains/config');
+  const rp=document.getElementById('routerProviders'),rs=document.getElementById('routerState');
+  if(cfg.__err){rs.textContent='OFFLINE';rp.innerHTML='<div class="provider">backend unreachable</div>';}
+  else{
+    rs.textContent=(cfg.active||'local').toUpperCase();
+    rp.innerHTML=Object.entries(cfg.providers||{}).map(([k,p])=>`<div class="provider"><div class="dot" style="${k===cfg.active?'':'background:#5b6f93;box-shadow:none'}"></div>${p.label||k}${p.has_key?' 🔑':''}</div>`).join('');
+  }
+  // Connectors ← /api/connectors/list (real registry)
+  const cn=await apiGet('/api/connectors/list');
+  if(!cn.__err){
+    const list=cn.connectors||[];
+    document.getElementById('connCount').textContent=list.length;
+    document.getElementById('connectors').innerHTML=list.slice(0,8).map(c=>`<div class="provider"><div class="dot" style="${c.enabled?'':'background:#5b6f93;box-shadow:none'}"></div>${c.name}</div>`).join('')||'<div class="provider">none registered</div>';
+  }
+}
 function installApp(id){const e=system.editions[system.selectedEdition];if(!e.apps.includes(id))e.apps.push(id);renderApps();log('app.pin',`Pinned ${system.apps[id].name}`,'system.apps.json')}
 function openWin(id,full=false){const w=document.getElementById('win-'+id);if(!w)return;w.classList.add('show');if(full)w.classList.add('full');log('app.launch',`Opened ${id}`,'system.apps.json')}
 function closeWin(id){const w=document.getElementById('win-'+id);if(w)w.classList.remove('show')}

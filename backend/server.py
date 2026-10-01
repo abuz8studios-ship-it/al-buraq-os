@@ -74,7 +74,9 @@ app = FastAPI(title=APP_NAME, version=VERSION, lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    # Wildcard origin + credentials is an invalid CORS combination; the local
+    # shell is same-origin anyway. Kept allow-all for reverse-proxy previews.
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -86,12 +88,30 @@ def _http_get(url: str, timeout: float = 2.0) -> tuple[int | None, bytes | None]
     except Exception:
         return None, None
 
-def _brain_reachable() -> bool:
-    st, _ = _http_get(BRAIN_URL + "/health", 1.5)
+# Reachability is probed by /health (polled every 8s by the shell), boot report,
+# brains list and chat. Without a TTL cache, a DOWN brain adds up to 2 x timeout
+# of blocking latency to every one of those calls. Cache briefly; stay honest.
+_BRAIN_HEALTH_CACHE: dict[str, Any] = {"ts": 0.0, "up": False}
+
+def _brain_reachable(ttl: float = 2.5) -> bool:
+    now = time.time()
+    if now - _BRAIN_HEALTH_CACHE["ts"] < ttl:
+        return bool(_BRAIN_HEALTH_CACHE["up"])
+    up = False
+    st, _ = _http_get(BRAIN_URL + "/health", 1.0)
     if st == 200:
-        return True
-    st, _ = _http_get(BRAIN_URL + "/v1/models", 1.5)
-    return st == 200
+        up = True
+    else:
+        st, _ = _http_get(BRAIN_URL + "/v1/models", 1.0)
+        up = st == 200
+    _BRAIN_HEALTH_CACHE["ts"] = now
+    _BRAIN_HEALTH_CACHE["up"] = up
+    return up
+
+def _tail_lines(path: Path, n: int, chunk: int = 262144) -> list[str]:
+    """Bounded tail read — cost stays constant as the file grows."""
+    from jsonl_io import tail_lines
+    return tail_lines(path, n, chunk)
 
 def _append_signal(rec: dict[str, Any]) -> None:
     try:
@@ -173,6 +193,41 @@ def boot_report():
     active_p, prov = router.resolve()
     reachable = _brain_reachable()
     skills_data = learn.list_all()
+    mem_stats = mem.stats()
+
+    # ── HONESTY GATES: computed live from disk evidence, never hardcoded ──
+    # DESIGN_SPEC §1.3: "No fabricated metrics, ever." A gate shows True only
+    # when a real receipt exists on disk, or when it is structural (enforced
+    # in code + proven by the test suite; such gates say so in `evidence`).
+    turns_in_tail = sum(1 for r in _tail_lines(SIGNAL_PATH, 500) if '"kind": "turn"' in r or '"kind":"turn"' in r)
+    signal_size = SIGNAL_PATH.stat().st_size if SIGNAL_PATH.exists() else 0
+    learn_log = DATA / "logs" / "self_learning_log.jsonl"
+    upg_log = DATA / "logs" / "self_upgrade_log.jsonl"
+    missions_db = DATA / "missions.sqlite"
+    bb_chapters_in_vault = mem_stats["layers"].get("L4", 0)
+
+    gates = {
+        # structural gates — enforced in code, proven by tests/test_honesty_gates.py
+        "launcher_clean_folder": True,
+        "zero_secrets_leaked": True,
+        # live gates — require real on-disk receipts
+        "embedded_brain_floor": reachable,
+        "agentic_core_verified": turns_in_tail > 0,
+        "skill_loop_verified": learn_log.exists() and learn_log.stat().st_size > 0,
+        "upgrade_loop_verified": upg_log.exists() or len(upg.list_triggers()) > 0,
+        "mission_graph_verified": missions_db.exists(),
+        "builders_book_ingrained": bb_chapters_in_vault >= 11,
+    }
+    evidence = {
+        "launcher_clean_folder": "structural — tests/test_honesty_gates.py::test_gate_1_clean_folder_provisioning",
+        "zero_secrets_leaked": "structural — BrainRouter.list() masks keys as ***set***; test_gate_7_zero_secrets_leaked",
+        "embedded_brain_floor": f"engine reachable at {BRAIN_URL}: {reachable}" if reachable else "engine NOT reachable — sovereign deterministic floor serves instead (honest)",
+        "agentic_core_verified": f"{turns_in_tail} turn records in signal.jsonl tail ({signal_size} bytes on disk)",
+        "skill_loop_verified": f"self_learning_log.jsonl present: {learn_log.exists()}",
+        "upgrade_loop_verified": f"upgrade log present: {upg_log.exists()}, trigger receipts: {len(upg.list_triggers())}",
+        "mission_graph_verified": f"missions.sqlite present: {missions_db.exists()}",
+        "builders_book_ingrained": f"{bb_chapters_in_vault}/11 chapters in memory L4 vault",
+    }
 
     return {
         "ok": True,
@@ -180,11 +235,12 @@ def boot_report():
         "version": VERSION,
         "engine_reachable": reachable,
         "active_provider": active_p,
-        "memory_stats": mem.stats(),
+        "memory_stats": mem_stats,
         "connectors_count": len(conn.list().get("connectors", [])),
         "builders_book": {
-            "status": "ingrained",
+            "status": "ingrained" if bb_chapters_in_vault >= 11 else "not_ingrained",
             "chapters_count": 11,
+            "chapters_in_vault": bb_chapters_in_vault,
             "law_of_the_probe": True,
             "receipts_culture": True,
         },
@@ -194,16 +250,9 @@ def boot_report():
             "pruned": len(skills_data["pruned"]),
         },
         "upgrade_status": upg.get_status(),
-        "honesty_gates": {
-            "launcher_clean_folder": True,
-            "embedded_brain_floor": True,
-            "agentic_core_verified": True,
-            "skill_loop_verified": True,
-            "upgrade_loop_verified": True,
-            "mission_graph_verified": True,
-            "zero_secrets_leaked": True,
-            "builders_book_ingrained": True,
-        },
+        "honesty_gates": gates,
+        "honesty_evidence": evidence,
+        "honesty_all_green": all(gates.values()),
         "ts": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
     }
 
@@ -365,16 +414,21 @@ def inbox_send(inp: ChatIn):
 
 @app.get("/api/signal/tail")
 def signal_tail(limit: int = 20):
+    # Bounded tail read: constant cost no matter how large signal.jsonl grows.
+    limit = max(1, min(int(limit or 20), 500))
     if not SIGNAL_PATH.exists():
-        return {"signals": []}
-    lines = [ln for ln in SIGNAL_PATH.read_text(encoding="utf-8").splitlines() if ln.strip()]
-    signals = []
-    for ln in lines[-limit:]:
-        try:
-            signals.append(json.loads(ln))
-        except Exception:
-            pass
-    return {"signals": signals, "total_count": len(lines)}
+        return {"signals": [], "total_count": 0}
+    from jsonl_io import tail_jsonl
+    signals = tail_jsonl(SIGNAL_PATH, limit)
+    # total_count is exact only while the file fits in one tail chunk;
+    # beyond that it is a lower bound (reported honestly as such).
+    size = SIGNAL_PATH.stat().st_size
+    exact = size <= 262144
+    if exact:
+        total = len([ln for ln in SIGNAL_PATH.read_text(encoding="utf-8").splitlines() if ln.strip()])
+    else:
+        total = None
+    return {"signals": signals, "total_count": total, "total_count_is_exact": exact}
 
 
 # ── 4. Self-Learning Loop (Skills) ───────────────────────────────────────────
@@ -582,7 +636,9 @@ def jobs_list():
                 "name": "Skill Harvest & Eval Loop",
                 "schedule": "periodic",
                 "status": "ready",
-                "last_run": learn.harvest()[-1].get("ts") if learn.harvest() else None,
+                # ts of the last REAL learn cycle (from self_learning_log.jsonl),
+                # not the last signal row; single bounded tail read, no harvest()
+                "last_run": learn.last_cycle_ts(),
             },
             {
                 "id": "job_self_upgrade",
